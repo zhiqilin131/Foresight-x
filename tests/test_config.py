@@ -13,6 +13,8 @@ class TestSettings:
     def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("FORESIGHT_DATA_DIR", raising=False)
         monkeypatch.delenv("CHROMA_PERSIST_DIR", raising=False)
+        # Override any value from a local .env so defaults are deterministic in CI/dev.
+        monkeypatch.setenv("TAVILY_API_KEY", "")
         s = Settings()
         assert s.foresight_user_id == "demo_user"
         assert s.openai_model == "gpt-4o-mini"
