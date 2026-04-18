@@ -1,0 +1,1 @@
+"""Prompt templates per module."""
