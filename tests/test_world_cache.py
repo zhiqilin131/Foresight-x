@@ -16,15 +16,13 @@ from foresight_x.schemas import Fact, Reversibility, TimePressure, UserState
 
 @pytest.fixture
 def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
-    monkeypatch.delenv("CHROMA_PERSIST_DIR", raising=False)
-    monkeypatch.delenv("FORESIGHT_DATA_DIR", raising=False)
+    chroma = tmp_path / "chroma"
+    data = tmp_path / "data"
+    monkeypatch.setenv("CHROMA_PERSIST_DIR", str(chroma))
+    monkeypatch.setenv("FORESIGHT_DATA_DIR", str(data))
     monkeypatch.setenv("TAVILY_API_KEY", "")
-    return Settings(
-        chroma_persist_dir=tmp_path / "chroma",
-        foresight_data_dir=tmp_path / "data",
-        openai_api_key="test",
-        tavily_api_key="test",
-    )
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    return Settings()
 
 
 @pytest.fixture

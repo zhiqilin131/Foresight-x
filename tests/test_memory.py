@@ -24,16 +24,13 @@ def embed_model() -> MockEmbedding:
 
 @pytest.fixture
 def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
-    # Ensure a local .env does not override isolated Chroma dirs.
-    monkeypatch.delenv("CHROMA_PERSIST_DIR", raising=False)
-    monkeypatch.delenv("FORESIGHT_DATA_DIR", raising=False)
+    # Force env so pydantic-settings + .env cannot point Chroma at a shared ./data/chroma.
+    chroma = tmp_path / "chroma"
+    data = tmp_path / "data"
+    monkeypatch.setenv("CHROMA_PERSIST_DIR", str(chroma))
+    monkeypatch.setenv("FORESIGHT_DATA_DIR", str(data))
     monkeypatch.setenv("TAVILY_API_KEY", "")
-    return Settings(
-        chroma_persist_dir=tmp_path / "chroma",
-        foresight_data_dir=tmp_path / "data",
-        openai_api_key="test",
-        tavily_api_key="test",
-    )
+    return Settings()
 
 
 def test_add_and_retrieve_round_trip(embed_model: MockEmbedding, settings: Settings) -> None:

@@ -7,3 +7,7 @@ dist/
 data/chroma/*
 !data/chroma/.gitkeep
 data/traces/*.json
+data/outcomes/*.json
+!data/outcomes/.gitkeep
+web/node_modules/
+web/dist/
