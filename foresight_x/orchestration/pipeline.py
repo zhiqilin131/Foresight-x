@@ -17,8 +17,6 @@ from foresight_x.inference.option_generator import generate_options
 from foresight_x.perception.clarify_gate import merge_clarification_answers
 from foresight_x.perception.layer import build_user_state
 from foresight_x.perception.query_enhance import prepare_decision_text
-from foresight_x.memory.profile_store import load_profile as load_tier3_profile
-from foresight_x.memory.profile_summarizer import summarize_profile
 from foresight_x.profile.merge import append_clarification_to_profile, merge_profile_into_user_state
 from foresight_x.profile.store import load_user_profile, save_user_profile
 from foresight_x.retrieval.memory import UserMemory
@@ -165,22 +163,8 @@ def finalize_trace(
     trace = trace.model_copy(update={"reflection": reflection})
     if persist_trace:
         save_decision_trace(trace, settings=settings)
-        if user_memory is not None:
-            user_memory.add_decision(trace, outcome=None)
-            # Auto-refresh Tier 3 semantic profile every N newly added decisions.
-            try:
-                n = int(getattr(settings, "tier3_auto_update_every", 5) or 0)
-                min_n = int(getattr(settings, "tier3_min_decisions", 3) or 3)
-                if n > 0 and llm is not None and hasattr(user_memory, "list_all_past_decisions"):
-                    past = user_memory.list_all_past_decisions()
-                    if len(past) >= min_n:
-                        prior = load_tier3_profile(settings.foresight_user_id)
-                        summarized_before = int(prior.n_decisions_summarized) if prior else 0
-                        if len(past) - summarized_before >= n:
-                            summarize_profile(settings.foresight_user_id, past, llm=llm)
-            except Exception:
-                # Never fail a user run because profile refresh failed.
-                pass
+        # Vector memory is written only when an outcome is recorded (see
+        # ``apply_outcome_to_memory``), not here — aligns with "write on outcome" lifecycle.
     return trace
 
 

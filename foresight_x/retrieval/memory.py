@@ -1,5 +1,9 @@
 """Per-user decision memory: Chroma + LlamaIndex -> `MemoryBundle`.
 
+**Indexing:** past decisions are inserted when an outcome is recorded via
+:func:`foresight_x.harness.improvement_loop.apply_outcome_to_memory` (not at raw
+trace save time).
+
 Retrieval uses a **vector candidate set**, then **re-ranks** by combining:
 embedding relevance, **exponential time decay** on ``timestamp``, and a simple
 **priority overlap** boost from :func:`profile_snippet_for_retrieval` vs document

@@ -8,9 +8,11 @@ import pytest
 from llama_index.core.embeddings import MockEmbedding
 
 from foresight_x.config import Settings
+from foresight_x.harness.improvement_loop import apply_outcome_to_memory
 from foresight_x.orchestration.pipeline import PipelineContext, run_pipeline
 from foresight_x.retrieval.memory import UserMemory
 from foresight_x.schemas import (
+    DecisionOutcome,
     PastDecision,
     Reversibility,
     TimePressure,
@@ -159,12 +161,70 @@ def test_add_decision_from_trace(embed_model: MockEmbedding, settings: Settings)
     assert any(t.decision_id == "t-1" for t in bundle.similar_past_decisions)
 
 
+def test_pipeline_persist_does_not_index_without_outcome(
+    embed_model: MockEmbedding,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Persisted trace JSON exists, but UserMemory stays empty until an outcome is recorded."""
+    monkeypatch.setenv("TAVILY_API_KEY", "")
+    mem = UserMemory(settings.foresight_user_id, settings=settings, embed_model=embed_model)
+    ctx = PipelineContext(settings=settings, llm=None, user_memory=mem)
+    run_pipeline(
+        ctx,
+        "remote work policy negotiation timeline and manager expectations",
+        decision_id="pre-outcome-only",
+        persist_trace=True,
+    )
+    assert settings.traces_dir.joinpath("pre-outcome-only.json").is_file()
+    ids = {r.decision_id for r in mem.list_all_past_decisions()}
+    assert "pre-outcome-only" not in ids
+
+
+def test_apply_outcome_twice_reindexes_single_entry(
+    embed_model: MockEmbedding,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recording an outcome twice is safe: remove + re-add leaves one logical row per decision_id."""
+    monkeypatch.setenv("TAVILY_API_KEY", "")
+    mem = UserMemory(settings.foresight_user_id, settings=settings, embed_model=embed_model)
+    run_pipeline(
+        PipelineContext(settings=settings, llm=None, user_memory=mem),
+        "deadline extension request wording",
+        decision_id="double-apply-1",
+        persist_trace=True,
+    )
+    o1 = DecisionOutcome(
+        decision_id="double-apply-1",
+        user_took_recommended_action=True,
+        actual_outcome="First report.",
+        user_reported_quality=3,
+        reversed_later=False,
+        timestamp="2026-01-01T00:00:00Z",
+    )
+    apply_outcome_to_memory("double-apply-1", o1, settings=settings, user_memory=mem)
+    o2 = DecisionOutcome(
+        decision_id="double-apply-1",
+        user_took_recommended_action=True,
+        actual_outcome="Updated report.",
+        user_reported_quality=5,
+        reversed_later=False,
+        timestamp="2026-02-01T00:00:00Z",
+    )
+    apply_outcome_to_memory("double-apply-1", o2, settings=settings, user_memory=mem)
+    rows = [r for r in mem.list_all_past_decisions() if r.decision_id == "double-apply-1"]
+    assert len(rows) == 1
+    assert rows[0].outcome == "Updated report."
+    assert rows[0].outcome_quality == 5
+
+
 def test_pipeline_persist_indexes_for_subsequent_retrieval(
     embed_model: MockEmbedding,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Persisted runs are written to UserMemory so later runs can retrieve prior decisions."""
+    """After an outcome is recorded, the decision is indexed; a later run can retrieve it."""
     monkeypatch.setenv("TAVILY_API_KEY", "")
     mem = UserMemory(settings.foresight_user_id, settings=settings, embed_model=embed_model)
     ctx = PipelineContext(settings=settings, llm=None, user_memory=mem)
@@ -173,6 +233,19 @@ def test_pipeline_persist_indexes_for_subsequent_retrieval(
         "career internship deadline anxiety offer versus wait",
         decision_id="carry-a",
         persist_trace=True,
+    )
+    apply_outcome_to_memory(
+        "carry-a",
+        DecisionOutcome(
+            decision_id="carry-a",
+            user_took_recommended_action=True,
+            actual_outcome="Chose offer A.",
+            user_reported_quality=4,
+            reversed_later=False,
+            timestamp="2026-01-10T00:00:00Z",
+        ),
+        settings=settings,
+        user_memory=mem,
     )
     trace_b = run_pipeline(
         ctx,
