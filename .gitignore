@@ -11,5 +11,9 @@ data/profile/*.json
 !data/profile/.gitkeep
 data/outcomes/*.json
 !data/outcomes/.gitkeep
+data/shadow_self/
+chroma.sqlite3
+# stray local chroma artifact
+8ab6236a-46d7-40d6-9b65-1d340327115e/
 web/node_modules/
 web/dist/

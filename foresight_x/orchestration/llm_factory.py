@@ -9,7 +9,7 @@ from llama_index.llms.openai import OpenAI
 from foresight_x.config import Settings, load_settings
 
 
-def build_openai_llm(settings: Settings | None = None) -> Any:
+def build_openai_llm(settings: Settings | None = None, *, temperature: float | None = None) -> Any:
     """Build a LlamaIndex OpenAI-compatible LLM for structured_predict calls.
 
     Using a smaller/faster model via OPENAI_MODEL reduces cost/latency but can hurt
@@ -19,8 +19,8 @@ def build_openai_llm(settings: Settings | None = None) -> Any:
     kwargs: dict[str, Any] = {
         "model": s.openai_model,
         "api_key": s.openai_api_key or None,
-        # Keep outputs concise and deterministic for schema-constrained generation.
-        "temperature": 0.2,
+        # Default: concise deterministic structured outputs; override for chat-like turns.
+        "temperature": 0.2 if temperature is None else temperature,
     }
     if s.openai_api_base:
         kwargs["api_base"] = s.openai_api_base

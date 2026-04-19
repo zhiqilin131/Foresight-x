@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from '../model';
+import { VoiceInputButton } from './VoiceInputButton';
 
 interface InputPanelProps {
   decisionInput: string;
@@ -11,6 +12,8 @@ interface InputPanelProps {
   clarifyOpen?: boolean;
   loadingStage?: string | null;
   stageLabel?: Record<string, string>;
+  /** Append browser / server transcript into the decision field */
+  onVoiceTranscript?: (text: string) => void;
 }
 
 export function InputPanel({
@@ -23,6 +26,7 @@ export function InputPanel({
   clarifyOpen = false,
   loadingStage,
   stageLabel,
+  onVoiceTranscript,
 }: InputPanelProps) {
   const [justClicked, setJustClicked] = useState(false);
   const clickTimerRef = useRef<number | null>(null);
@@ -54,9 +58,18 @@ export function InputPanel({
           {state === 'empty' && (
             <>
               <div className="space-y-4">
-                <label htmlFor="decision-input" className="block text-sm text-gray-700" style={{ fontWeight: 500 }}>
-                  Decision input
-                </label>
+                <div className="flex justify-between items-center gap-2">
+                  <label htmlFor="decision-input" className="block text-sm text-gray-700" style={{ fontWeight: 500 }}>
+                    Decision input
+                  </label>
+                  {onVoiceTranscript && (
+                    <VoiceInputButton
+                      onTranscript={onVoiceTranscript}
+                      disabled={state === 'loading'}
+                      compact
+                    />
+                  )}
+                </div>
                 <textarea
                   id="decision-input"
                   value={decisionInput}

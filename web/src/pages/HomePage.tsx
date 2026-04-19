@@ -395,6 +395,12 @@ export default function HomePage() {
             clarifyOpen={clarifyOpen}
             loadingStage={loadingStage}
             stageLabel={STAGE_LABEL}
+            onVoiceTranscript={(t) =>
+              setDecisionInput((s) => {
+                const x = s.trim();
+                return x ? `${x} ${t}` : t;
+              })
+            }
           />
         </aside>
 
@@ -452,6 +458,12 @@ export default function HomePage() {
                 clarifyOpen={clarifyOpen}
                 loadingStage={loadingStage}
                 stageLabel={STAGE_LABEL}
+                onVoiceTranscript={(t) =>
+                  setDecisionInput((s) => {
+                    const x = s.trim();
+                    return x ? `${x} ${t}` : t;
+                  })
+                }
               />
             </div>
           </div>

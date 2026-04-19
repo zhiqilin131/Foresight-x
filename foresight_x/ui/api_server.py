@@ -5,14 +5,16 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException
+import io
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from foresight_x.config import load_settings
 from foresight_x.harness.improvement_loop import apply_outcome_to_memory
-from foresight_x.harness.outcome_tracker import save_decision_outcome
+from foresight_x.harness.outcome_tracker import load_decision_outcome, save_decision_outcome
 from foresight_x.harness.trace import load_decision_trace
 from foresight_x.harness.trace_index import delete_trace, list_traces
 from foresight_x.orchestration.pipeline import PipelineContext, iter_pipeline_events, run_pipeline
@@ -22,6 +24,7 @@ from foresight_x.schemas import DecisionOutcome, UserProfile
 from foresight_x.ui.cli import _build_context
 from foresight_x.memory.profile_store import empty_profile as load_tier3_empty_profile
 from foresight_x.memory.profile_store import load_profile as load_tier3_profile
+from foresight_x.shadow.chat import run_shadow_turn
 
 
 def _utc_now() -> str:
@@ -90,6 +93,9 @@ def root() -> dict[str, object]:
             "/api/traces",
             "/api/traces/{decision_id}",
             "/api/record-outcome",
+            "/api/outcomes/{decision_id}",
+            "/api/shadow/chat",
+            "/api/transcribe",
         ],
     }
 
@@ -204,6 +210,77 @@ def clarify(body: ClarifyRequest) -> dict:
 @app.get("/api/traces")
 def get_traces() -> list[dict]:
     return [t.model_dump(mode="json") for t in list_traces()]
+
+
+@app.get("/api/outcomes/{decision_id}")
+def get_outcome(decision_id: str) -> dict:
+    """Return saved outcome JSON for ``decision_id``, or 404 if none."""
+    try:
+        o = load_decision_outcome(decision_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="no_outcome") from None
+    return o.model_dump(mode="json")
+
+
+class ShadowMessage(BaseModel):
+    role: str = Field(min_length=1)
+    content: str = Field(min_length=1)
+
+
+class ShadowChatRequest(BaseModel):
+    messages: list[ShadowMessage] = Field(min_length=1)
+
+
+@app.post("/api/shadow/chat")
+def shadow_chat(body: ShadowChatRequest) -> dict:
+    """Reflective chat: therapist-leaning tone; no decisions. Updates shadow-self notes."""
+    settings = load_settings()
+    if not (settings.openai_api_key or "").strip():
+        raise HTTPException(status_code=503, detail="Shadow chat requires OPENAI_API_KEY")
+    try:
+        msgs = [m.model_dump() for m in body.messages]
+        reply, flag, state, recorded_obs = run_shadow_turn(msgs, settings=settings)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Shadow chat failed: {e!s}") from e
+    return {
+        "reply": reply,
+        "suggest_decision_navigation": flag,
+        "shadow_turn_count": state.turn_count,
+        "recorded_observation": recorded_obs,
+    }
+
+
+@app.post("/api/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)) -> dict:
+    """Speech-to-text via OpenAI Whisper (same key as chat)."""
+    settings = load_settings()
+    if not (settings.openai_api_key or "").strip():
+        raise HTTPException(status_code=503, detail="Transcription requires OPENAI_API_KEY")
+    try:
+        from openai import OpenAI
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail="openai package required for transcription") from e
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+
+    client = OpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_api_base or None,
+    )
+    buf = io.BytesIO(raw)
+    buf.name = file.filename or "audio.webm"
+    try:
+        tr = client.audio.transcriptions.create(model="whisper-1", file=buf)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Transcription failed: {e!s}") from e
+    text = getattr(tr, "text", None) or ""
+    return {"text": text.strip()}
 
 
 @app.get("/api/traces/{decision_id}")

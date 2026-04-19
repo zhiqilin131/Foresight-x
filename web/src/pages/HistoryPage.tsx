@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { PageBackButton } from '../app/components/PageBackButton';
 import { OutcomeHarness } from '../app/components/OutcomeHarness';
+import { SavedOutcomeModal } from '../app/components/SavedOutcomeModal';
 import { apiUrl } from '../utils/apiOrigin';
 
 interface TraceRow {
@@ -16,6 +17,7 @@ export default function HistoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [outcomeForId, setOutcomeForId] = useState<string | null>(null);
+  const [savedOutcomeForId, setSavedOutcomeForId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -86,6 +88,13 @@ export default function HistoryPage() {
               <div className="flex flex-wrap gap-2 shrink-0">
                 <button
                   type="button"
+                  onClick={() => setSavedOutcomeForId(r.decision_id)}
+                  className="px-4 py-2 text-sm rounded-full border border-indigo-200 text-indigo-900 hover:bg-indigo-50"
+                >
+                  Saved outcome
+                </button>
+                <button
+                  type="button"
                   onClick={() => setOutcomeForId(r.decision_id)}
                   className="px-4 py-2 text-sm rounded-full border border-purple-200 text-purple-900 hover:bg-purple-50"
                 >
@@ -110,6 +119,10 @@ export default function HistoryPage() {
           decisionId={outcomeForId}
           onClose={() => setOutcomeForId(null)}
         />
+      )}
+
+      {savedOutcomeForId && (
+        <SavedOutcomeModal decisionId={savedOutcomeForId} onClose={() => setSavedOutcomeForId(null)} />
       )}
     </div>
   );
