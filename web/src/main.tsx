@@ -5,6 +5,7 @@ import HomePage from './pages/HomePage';
 import HistoryPage from './pages/HistoryPage';
 import ProfilePage from './pages/ProfilePage';
 import ShadowChatPage from './pages/ShadowChatPage';
+import PersonalizePage from './pages/PersonalizePage';
 import './styles/index.css';
 
 const router = createHashRouter([
@@ -13,6 +14,7 @@ const router = createHashRouter([
   { path: '/history', element: <HistoryPage /> },
   { path: '/reflect', element: <ShadowChatPage /> },
   { path: '/profile', element: <ProfilePage /> },
+  { path: '/personalize', element: <PersonalizePage /> },
 ]);
 
 createRoot(document.getElementById('root')!).render(

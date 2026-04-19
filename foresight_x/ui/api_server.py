@@ -24,6 +24,7 @@ from foresight_x.schemas import DecisionOutcome, UserProfile
 from foresight_x.ui.cli import _build_context
 from foresight_x.memory.profile_store import empty_profile as load_tier3_empty_profile
 from foresight_x.memory.profile_store import load_profile as load_tier3_profile
+from foresight_x.personalization.ingest import ingest_personalization_text, preview_extract_summary
 from foresight_x.shadow.chat import run_shadow_turn
 
 
@@ -96,6 +97,7 @@ def root() -> dict[str, object]:
             "/api/outcomes/{decision_id}",
             "/api/shadow/chat",
             "/api/transcribe",
+            "/api/personalization/ingest",
         ],
     }
 
@@ -242,6 +244,33 @@ class ShadowMessage(BaseModel):
 
 class ShadowChatRequest(BaseModel):
     messages: list[ShadowMessage] = Field(min_length=1)
+
+
+class PersonalizationIngestRequest(BaseModel):
+    text: str = Field(min_length=1)
+
+
+@app.post("/api/personalization/ingest")
+def personalization_ingest(body: PersonalizationIngestRequest) -> dict:
+    """Analyze pasted/exported chat or email text; merge behavioral insights into UserProfile (+ Tier 3)."""
+    settings = load_settings()
+    if not (settings.openai_api_key or "").strip():
+        raise HTTPException(status_code=503, detail="Personalization ingest requires OPENAI_API_KEY")
+    try:
+        merged, ext, path = ingest_personalization_text(body.text.strip(), settings=settings)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Personalization ingest failed: {e!s}") from e
+    return {
+        "ok": True,
+        "profile_path": path,
+        "summary_lines": preview_extract_summary(ext),
+        "confidence": merged.confidence,
+        "last_updated": merged.last_updated,
+    }
 
 
 @app.post("/api/shadow/chat")

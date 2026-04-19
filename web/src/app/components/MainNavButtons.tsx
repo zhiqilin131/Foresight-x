@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router';
-import { History, MessageCircleHeart, UserCircle } from 'lucide-react';
+import { History, MessageCircleHeart, Sparkles, UserCircle } from 'lucide-react';
 
 const btnClass =
   'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full text-sm ' +
@@ -14,6 +14,10 @@ export function MainNavButtons() {
       <button type="button" onClick={() => navigate('/reflect')} className={btnClass} style={{ fontWeight: 600 }}>
         <MessageCircleHeart className="w-4 h-4 text-purple-600 shrink-0" aria-hidden />
         Shadow self
+      </button>
+      <button type="button" onClick={() => navigate('/personalize')} className={btnClass} style={{ fontWeight: 600 }}>
+        <Sparkles className="w-4 h-4 text-violet-600 shrink-0" aria-hidden />
+        Personalize
       </button>
       <button type="button" onClick={() => navigate('/history')} className={btnClass} style={{ fontWeight: 600 }}>
         <History className="w-4 h-4 text-purple-600 shrink-0" aria-hidden />

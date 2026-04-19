@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { ClarifyDialog, type ClarifyQuestion } from '../app/components/ClarifyDialog';
 import { InputPanel } from '../app/components/InputPanel';
 import { MainNavButtons } from '../app/components/MainNavButtons';
@@ -465,6 +465,19 @@ export default function HomePage() {
                   })
                 }
               />
+
+              <div className="mt-12 text-center max-w-lg mx-auto">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Personalization</p>
+                <Link
+                  to="/personalize"
+                  className="inline-flex items-center justify-center w-full sm:w-auto px-6 py-3.5 rounded-2xl border border-violet-200/90 bg-white/80 text-violet-900 text-sm font-medium hover:bg-violet-50/90 hover:border-violet-300 transition-colors shadow-sm"
+                >
+                  Import chats or email (paste / .txt) → teach the model your patterns
+                </Link>
+                <p className="text-xs text-gray-500 mt-3 leading-relaxed">
+                  Optional: stubbed Gmail &amp; Messenger connectors on the next screen — use manual paste for now.
+                </p>
+              </div>
             </div>
           </div>
         ) : (
