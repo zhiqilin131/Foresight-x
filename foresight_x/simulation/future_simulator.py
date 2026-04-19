@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from foresight_x.structured_predict import structured_predict
 from foresight_x.prompts.future_simulator import future_simulator_prompt
 from foresight_x.schemas import EvidenceBundle, Option, Scenario, SimulatedFuture, UserState
 
@@ -101,7 +102,7 @@ def simulate_futures(
             continue
         prompt = future_simulator_prompt(opt, user_state, evidence)
         try:
-            raw = llm.structured_predict(SimulatedFuture, prompt)
+            raw = structured_predict(llm, SimulatedFuture, prompt)
             fut = _coerce_simulated_future(raw, opt)
             out.append(fut)
         except Exception:

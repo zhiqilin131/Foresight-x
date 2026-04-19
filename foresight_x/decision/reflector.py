@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from foresight_x.structured_predict import structured_predict
 from foresight_x.prompts.reflector import reflector_prompt
 from foresight_x.schemas import DecisionTrace, Reflection
 
@@ -40,7 +41,7 @@ def reflect(trace: DecisionTrace, llm: StructuredPredictLLM | None = None) -> Re
         return _fallback_reflection()
     prompt = reflector_prompt(trace)
     try:
-        raw = llm.structured_predict(Reflection, prompt)
+        raw = structured_predict(llm, Reflection, prompt)
         return raw if isinstance(raw, Reflection) else Reflection.model_validate(raw)
     except Exception:
         return _fallback_reflection()

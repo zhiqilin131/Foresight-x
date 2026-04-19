@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from foresight_x.structured_predict import structured_predict
 from foresight_x.prompts.recommender import recommender_prompt
 from foresight_x.schemas import EvidenceBundle, MemoryBundle, Option, OptionEvaluation, Recommendation, NextAction
 
@@ -89,7 +90,7 @@ def recommend(
         chosen, evaluations, options, evidence, memory, composite_by_option_id
     )
     try:
-        raw = llm.structured_predict(Recommendation, prompt)
+        raw = structured_predict(llm, Recommendation, prompt)
         rec = raw if isinstance(raw, Recommendation) else Recommendation.model_validate(raw)
         valid_ids = {o.option_id for o in options}
         if rec.chosen_option_id not in valid_ids:

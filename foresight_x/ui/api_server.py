@@ -45,6 +45,20 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/")
+def root() -> dict[str, object]:
+    return {
+        "service": "Foresight-X API",
+        "status": "ok",
+        "routes": ["/api/health", "/api/run", "/api/record-outcome"],
+    }
+
+
+@app.get("/health")
+def health_alias() -> dict[str, str]:
+    return health()
+
+
 @app.post("/api/run", response_model=RunResponse)
 def run_decision(body: RunRequest) -> RunResponse:
     settings = load_settings()
@@ -56,6 +70,11 @@ def run_decision(body: RunRequest) -> RunResponse:
         notes=notes,
         trace_path=str(trace_path),
     )
+
+
+@app.post("/run", response_model=RunResponse)
+def run_decision_alias(body: RunRequest) -> RunResponse:
+    return run_decision(body)
 
 
 class RecordOutcomeRequest(BaseModel):
@@ -88,3 +107,8 @@ def record_outcome(body: RecordOutcomeRequest) -> RecordOutcomeResponse:
     path = save_decision_outcome(outcome, settings=settings)
     apply_outcome_to_memory(body.decision_id, outcome, settings=settings)
     return RecordOutcomeResponse(ok=True, outcome_path=str(path))
+
+
+@app.post("/record-outcome", response_model=RecordOutcomeResponse)
+def record_outcome_alias(body: RecordOutcomeRequest) -> RecordOutcomeResponse:
+    return record_outcome(body)

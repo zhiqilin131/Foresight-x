@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from foresight_x.structured_predict import structured_predict
 from foresight_x.prompts.irrationality import irrationality_prompt
 from foresight_x.schemas import MemoryBundle, RationalityReport, Reversibility, TimePressure, UserState
 
@@ -74,7 +75,7 @@ def detect_irrationality(
 
     prompt = irrationality_prompt(user_state, memory, base.detected_biases)
     try:
-        llm_out = llm.structured_predict(RationalityReport, prompt)
+        llm_out = structured_predict(llm, RationalityReport, prompt)
         llm_report = llm_out if isinstance(llm_out, RationalityReport) else RationalityReport.model_validate(llm_out)
     except Exception:
         return base

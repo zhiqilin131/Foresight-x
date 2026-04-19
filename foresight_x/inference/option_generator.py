@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from foresight_x.structured_predict import structured_predict
 from foresight_x.prompts.option_generator import option_generator_prompt
 from foresight_x.schemas import EvidenceBundle, MemoryBundle, Option, UserState
 
@@ -37,6 +38,61 @@ def _dedupe_options(options: list[Option]) -> list[Option]:
 
 
 def _fallback_options(user_state: UserState) -> list[Option]:
+    text = user_state.raw_input.lower()
+    if any(k in text for k in ("cancer", "tumor", "diagnosis", "medical", "hospital")):
+        return [
+            Option(
+                option_id="opt_urgent_clinical_team",
+                name="Contact your clinical care team immediately",
+                description=(
+                    "Reach out to an oncologist/doctor now to confirm diagnosis details and urgent next steps."
+                ),
+                key_assumptions=["Clinical guidance is the primary source for medical decisions"],
+                cost_of_reversal="low",
+            ),
+            Option(
+                option_id="opt_second_opinion",
+                name="Get a rapid second opinion",
+                description=(
+                    "Request pathology review and a second specialist opinion before committing to treatment."
+                ),
+                key_assumptions=["A second opinion can materially change treatment choices"],
+                cost_of_reversal="low",
+            ),
+            Option(
+                option_id="opt_support_plan",
+                name="Build a support and logistics plan",
+                description=(
+                    "Organize insurance, family support, and treatment logistics in parallel with clinical planning."
+                ),
+                key_assumptions=["Execution support improves adherence and outcomes"],
+                cost_of_reversal="low",
+            ),
+        ]
+    if any(k in text for k in ("job", "offer", "career", "salary", "interview")):
+        return [
+            Option(
+                option_id="opt_negotiate_offer",
+                name="Negotiate key terms before deciding",
+                description="Clarify compensation, role scope, and growth path to reduce ambiguity.",
+                key_assumptions=["Employer is open to negotiation"],
+                cost_of_reversal="low",
+            ),
+            Option(
+                option_id="opt_accept_best_fit",
+                name="Accept the best-fit offer now",
+                description="Choose the offer with strongest long-term fit across your criteria.",
+                key_assumptions=["You already have enough evidence on fit and risks"],
+                cost_of_reversal="medium",
+            ),
+            Option(
+                option_id="opt_compare_with_scorecard",
+                name="Run a weighted comparison scorecard",
+                description="Score each offer against criteria and make a fixed-time decision.",
+                key_assumptions=["A structured rubric improves decision quality"],
+                cost_of_reversal="low",
+            ),
+        ]
     return [
         Option(
             option_id="opt_ask_extension",
@@ -96,7 +152,7 @@ def generate_options(
     else:
         prompt = option_generator_prompt(user_state, memory, evidence)
         try:
-            out = llm.structured_predict(OptionSet, prompt)
+            out = structured_predict(llm, OptionSet, prompt)
             if isinstance(out, OptionSet):
                 candidates = out.options
             elif isinstance(out, list):

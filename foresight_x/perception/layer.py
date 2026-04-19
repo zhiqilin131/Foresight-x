@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from foresight_x.structured_predict import structured_predict
 from foresight_x.prompts.perception import perception_prompt
 from foresight_x.schemas import Reversibility, TimePressure, UserState
 
@@ -55,7 +56,7 @@ def build_user_state(raw_input: str, llm: StructuredPredictLLM | None = None) ->
         return _heuristic_user_state(raw_input)
     prompt = perception_prompt(raw_input)
     try:
-        out = llm.structured_predict(UserState, prompt)
+        out = structured_predict(llm, UserState, prompt)
         if isinstance(out, UserState):
             return out
         return UserState.model_validate(out)

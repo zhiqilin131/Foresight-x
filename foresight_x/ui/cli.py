@@ -8,6 +8,7 @@ from pathlib import Path
 
 from foresight_x.config import Settings, load_settings
 from foresight_x.harness.outcome_tracker import ask_outcome
+from foresight_x.orchestration.llm_factory import build_openai_llm
 from foresight_x.orchestration.pipeline import PipelineContext, run_pipeline
 from foresight_x.retrieval.memory import UserMemory
 from foresight_x.retrieval.world_cache import WorldKnowledge
@@ -16,9 +17,14 @@ from foresight_x.schemas import DecisionTrace
 
 def _build_context(settings: Settings) -> tuple[PipelineContext, list[str]]:
     notes: list[str] = []
+    llm = None
     user_memory = None
     world = None
     if settings.openai_api_key:
+        try:
+            llm = build_openai_llm(settings)
+        except Exception as exc:
+            notes.append(f"LLM unavailable: {exc}")
         try:
             user_memory = UserMemory(settings.foresight_user_id, settings=settings)
         except Exception as exc:
@@ -31,7 +37,7 @@ def _build_context(settings: Settings) -> tuple[PipelineContext, list[str]]:
         notes.append("OPENAI_API_KEY missing; running without vector retrieval.")
     if not settings.tavily_api_key:
         notes.append("TAVILY_API_KEY missing; live web retrieval is disabled.")
-    return PipelineContext(settings=settings, llm=None, user_memory=user_memory, world=world), notes
+    return PipelineContext(settings=settings, llm=llm, user_memory=user_memory, world=world), notes
 
 
 def render_trace_sections(trace: DecisionTrace) -> str:

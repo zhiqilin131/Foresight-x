@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from foresight_x.structured_predict import structured_predict
 from foresight_x.prompts.evaluator import evaluator_prompt
 from foresight_x.schemas import OptionEvaluation, SimulatedFuture, UserState
 
@@ -58,7 +59,7 @@ def evaluate_options(
             continue
         prompt = evaluator_prompt(fut, user_state)
         try:
-            raw = llm.structured_predict(OptionEvaluation, prompt)
+            raw = structured_predict(llm, OptionEvaluation, prompt)
             ev = raw if isinstance(raw, OptionEvaluation) else OptionEvaluation.model_validate(raw)
             if ev.option_id != fut.option_id:
                 ev = ev.model_copy(update={"option_id": fut.option_id})
