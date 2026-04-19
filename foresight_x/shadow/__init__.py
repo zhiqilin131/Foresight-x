@@ -1,4 +1,4 @@
-"""Shadow chat: reflective dialogue and behavioral understanding (not decision advice).
+"""Shadow chat: dialogue with the user's shadow self for behavioral understanding (not decision advice).
 
 ``run_shadow_turn`` lives in ``foresight_x.shadow.chat`` — not re-exported here to avoid import cycles
 (``shadow.chat`` → ``orchestration`` → ``pipeline`` → ``user_recent_context`` → ``shadow.store``).

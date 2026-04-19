@@ -7,20 +7,24 @@
   "risk_posture": "moderate",
   "recurring_themes": [
     "tends to seek extensions when under pressure",
-    "prefers to resolve conflicts directly rather than escalating"
+    "prefers to resolve conflicts directly rather than escalating",
+    "tends to prioritize relationships over career aspirations"
   ],
   "current_goals": [
     "secure a job offer",
     "navigate personal relationships",
-    "obtain food without spending money"
+    "obtain food without spending money",
+    "pursue a career in music"
   ],
   "known_constraints": [
     "upcoming graduation",
     "financial considerations"
   ],
-  "n_decisions_summarized": 42,
-  "last_updated": "2026-04-19T09:55:04.307125",
+  "n_decisions_summarized": 52,
+  "last_updated": "2026-04-19T11:06:45.646941",
   "confidence": 0.8,
+  "user_priorities": [],
+  "inferred_priorities": [],
   "priorities": [],
   "about_me": "",
   "constraints": []

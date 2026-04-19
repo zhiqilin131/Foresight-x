@@ -110,8 +110,8 @@ export default function ShadowChatPage() {
             Shadow space
           </h1>
           <p className="text-sm text-gray-600 mt-2 leading-relaxed">
-            Pure chat: therapist-leaning, friendly presence. No decision recommendations here — patterns may be noted in
-            your shadow profile.
+            Talk with your shadow self — the voice that names what you sidestep and the tension under your story. Not
+            therapy. No option-picking here — patterns may be noted in your shadow profile.
           </p>
         </header>
 
@@ -124,7 +124,7 @@ export default function ShadowChatPage() {
         <div className="rounded-3xl border border-white/80 bg-white/60 backdrop-blur-sm p-4 min-h-[320px] max-h-[55vh] overflow-y-auto mb-4 space-y-4">
           {messages.length === 0 && (
             <p className="text-sm text-gray-500 text-center py-12">
-              Say anything on your mind.
+              Say what you're carrying — your shadow self answers from here.
             </p>
           )}
           {messages.map((m, i) => (
@@ -196,8 +196,8 @@ export default function ShadowChatPage() {
           <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-gray-100">
             <h2 className="text-lg font-semibold text-gray-900 mb-2">Switch to decision mode?</h2>
             <p className="text-sm text-gray-600 mb-6 leading-relaxed">
-              Shadow space does not rank options or score choices here. For evidence-grounded decision analysis, run a
-              full Foresight-X pipeline from the home screen.
+              This shadow-self dialogue does not rank options or score choices. For evidence-grounded decision analysis,
+              run a full Foresight-X pipeline from the home screen.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-end">
               <button

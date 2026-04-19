@@ -13,7 +13,7 @@ export function MainNavButtons() {
     <div className="flex flex-wrap justify-center gap-3 mb-8">
       <button type="button" onClick={() => navigate('/reflect')} className={btnClass} style={{ fontWeight: 600 }}>
         <MessageCircleHeart className="w-4 h-4 text-purple-600 shrink-0" aria-hidden />
-        Shadow chat
+        Shadow self
       </button>
       <button type="button" onClick={() => navigate('/history')} className={btnClass} style={{ fontWeight: 600 }}>
         <History className="w-4 h-4 text-purple-600 shrink-0" aria-hidden />

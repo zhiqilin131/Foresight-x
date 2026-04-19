@@ -246,7 +246,7 @@ class ShadowChatRequest(BaseModel):
 
 @app.post("/api/shadow/chat")
 def shadow_chat(body: ShadowChatRequest) -> dict:
-    """Reflective chat: therapist-leaning tone; no decisions. Updates shadow-self notes."""
+    """Dialogue with the user's shadow self (not a therapist); no decisions. Updates shadow-self notes."""
     settings = load_settings()
     if not (settings.openai_api_key or "").strip():
         raise HTTPException(status_code=503, detail="Shadow chat requires OPENAI_API_KEY")
