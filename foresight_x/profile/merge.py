@@ -5,6 +5,15 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from foresight_x.profile.memory_structured import (
+    active_memory_facts,
+    ensure_memory_fact_text,
+    format_memory_fact_prompt_line,
+    normalize_predicate,
+    normalize_token,
+    single_slot_predicate,
+    triple_key,
+)
 from foresight_x.schemas import (
     MemoryFactCategory,
     MemoryFactSource,
@@ -87,8 +96,8 @@ def merge_profile_into_user_state(user_state: UserState, profile: UserProfile) -
     profile_only = profile.profile_channel_priority_texts()
     clar = profile.clarification_priority_texts()
     inferred = list(profile.inferred_priorities)
-    facts = list(profile.memory_facts)
-    fact_strings = [f"{x.category.value}: {x.text}" for x in facts]
+    facts = active_memory_facts(list(profile.memory_facts))
+    fact_strings = [format_memory_fact_prompt_line(x) for x in facts]
     combined = list(dict.fromkeys([*profile_only, *clar, *inferred, *fact_strings]))
     merged_goals = list(dict.fromkeys([*profile_only, *clar, *inferred, *fact_strings, *user_state.goals]))
     return user_state.model_copy(
@@ -135,10 +144,14 @@ def append_memory_facts(
     source: MemoryFactSource = "shadow",
     max_facts: int = 64,
 ) -> UserProfile:
-    """Append categorized facts; dedupes on (category, text) case-insensitively."""
+    """Append legacy flat facts (no predicate); dedupes on (category, text) among active legacy rows."""
     profile = UserProfile.model_validate(profile.model_dump(mode="json"))
     ts = _utc_ts()
-    existing = {(f.category, f.text.strip().lower()) for f in profile.memory_facts}
+    existing = {
+        (f.category, f.text.strip().lower())
+        for f in profile.memory_facts
+        if f.status == "active" and not normalize_predicate(f.predicate)
+    }
     mf = list(profile.memory_facts)
     for cat, raw in items:
         text = (raw or "").strip()
@@ -159,6 +172,81 @@ def append_memory_facts(
         )
     if len(mf) > max_facts:
         mf = mf[-max_facts:]
+    return profile.model_copy(update={"memory_facts": mf})
+
+
+def append_profile_memory_records(
+    profile: UserProfile,
+    records: list[ProfileMemoryFact],
+    *,
+    max_facts: int = 64,
+) -> UserProfile:
+    """Append structured ``ProfileMemoryFact`` rows with triple-key dedup and single-slot deprecation."""
+    profile = UserProfile.model_validate(profile.model_dump(mode="json"))
+    ts = _utc_ts()
+    mf: list[ProfileMemoryFact] = list(profile.memory_facts)
+
+    for raw in records:
+        ensured = ensure_memory_fact_text(raw)
+        if ensured is None:
+            continue
+        rec = ensured
+        rid = (rec.id or "").strip() or str(uuid.uuid4())
+        rec = rec.model_copy(update={"id": rid, "created_at": (rec.created_at or "").strip() or ts})
+
+        pred_norm = normalize_predicate(rec.predicate)
+        if not pred_norm:
+            key = (rec.category, rec.text.strip().lower())
+            if any(
+                f.status == "active"
+                and not normalize_predicate(f.predicate)
+                and (f.category, f.text.strip().lower()) == key
+                for f in mf
+            ):
+                continue
+            mf.append(rec)
+            if len(mf) > max_facts:
+                mf = mf[-max_facts:]
+            continue
+
+        if any(triple_key(f) == triple_key(rec) and f.status == "active" for f in mf):
+            continue
+
+        first_supersedes = ""
+        if single_slot_predicate(pred_norm):
+            new_mf: list[ProfileMemoryFact] = []
+            for f in mf:
+                if f.status != "active":
+                    new_mf.append(f)
+                    continue
+                if not normalize_predicate(f.predicate):
+                    new_mf.append(f)
+                    continue
+                if normalize_token(f.subject_ref or "user") != normalize_token(rec.subject_ref or "user"):
+                    new_mf.append(f)
+                    continue
+                if normalize_predicate(f.predicate) != pred_norm:
+                    new_mf.append(f)
+                    continue
+                if not first_supersedes and (f.id or "").strip():
+                    first_supersedes = (f.id or "").strip()
+                new_mf.append(
+                    f.model_copy(
+                        update={
+                            "status": "deprecated",
+                            "valid_to": ts,
+                            "replaced_by_id": rid,
+                        }
+                    )
+                )
+            mf = new_mf
+            if first_supersedes:
+                rec = rec.model_copy(update={"supersedes_id": first_supersedes})
+
+        mf.append(rec)
+        if len(mf) > max_facts:
+            mf = mf[-max_facts:]
+
     return profile.model_copy(update={"memory_facts": mf})
 
 

@@ -11,6 +11,7 @@ Do not duplicate these labels or field joins elsewhere — import
 
 from __future__ import annotations
 
+from foresight_x.profile.memory_structured import format_memory_fact_prompt_line
 from foresight_x.schemas import UserState
 
 # Truncation windows for embedding-facing text (single source; ``memory_query`` imports these).
@@ -28,7 +29,7 @@ def profile_snippet_for_retrieval(user_state: UserState) -> str:
     if user_state.profile_memory_facts:
         parts.append(
             "memory_facts "
-            + " ".join(f"{f.category.value} {f.text}" for f in user_state.profile_memory_facts)
+            + " ".join(format_memory_fact_prompt_line(f) for f in user_state.profile_memory_facts)
         )
     if user_state.profile_inferred_priorities:
         parts.append("system_inferred_priorities " + " ".join(user_state.profile_inferred_priorities))

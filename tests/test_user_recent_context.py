@@ -52,6 +52,7 @@ def test_facts_from_shadow_and_traces(iso: Settings, tmp_path: Path) -> None:
             "current_behavior": "c",
             "decision_type": "career",
             "reversibility": "partial",
+            "active_user_id": "u1",
         },
     }
     traces_dir.joinpath("past-1.json").write_text(json.dumps(trace_body), encoding="utf-8")

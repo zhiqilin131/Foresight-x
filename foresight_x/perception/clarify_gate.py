@@ -77,8 +77,10 @@ def run_clarify_gate(
         if clar:
             prof_bits += f"Saved clarification choices: {clar}\n"
         if profile.memory_facts:
+            from foresight_x.profile.memory_structured import active_memory_facts, format_memory_fact_prompt_line
+
             prof_bits += "Structured memory facts: " + " | ".join(
-                f"{f.category.value}: {f.text}" for f in profile.memory_facts[:16]
+                format_memory_fact_prompt_line(f) for f in active_memory_facts(list(profile.memory_facts))[:16]
             ) + "\n"
         if profile.inferred_priorities:
             prof_bits += (

@@ -37,9 +37,16 @@ def list_traces(*, settings: Settings | None = None) -> list[TraceListItem]:
             continue
         if isinstance(us, dict):
             trace_user = str(us.get("active_user_id", "") or "").strip()
-            # New traces are scoped by active_user_id. Legacy traces without user id stay visible.
-            if trace_user and current_user and trace_user != current_user:
-                continue
+            if current_user:
+                if trace_user:
+                    if trace_user != current_user:
+                        continue
+                else:
+                    # Legacy traces without active_user_id were previously visible to every persona.
+                    # Only the shared demo sandbox keeps that behavior; named personas must not see
+                    # other users' unscoped history.
+                    if current_user != "demo_user":
+                        continue
         raw = us.get("raw_input") if isinstance(us, dict) else ""
         preview = (raw or "")[:160].replace("\n", " ")
         dt = us.get("decision_type", "") if isinstance(us, dict) else ""

@@ -8,13 +8,46 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from foresight_x.config import Settings, load_settings
+from foresight_x.extraction.atomic_claims import run_atomic_claims
 from foresight_x.memory.profile_store import empty_profile, load_profile as load_tier3_profile, save_profile as save_tier3_profile
 from foresight_x.orchestration.llm_factory import build_openai_llm
+from foresight_x.profile.memory_structured import render_triple_line
+from foresight_x.profile.merge import append_profile_memory_records
 from foresight_x.profile.store import load_user_profile, save_user_profile
-from foresight_x.schemas import UserProfile, rebuild_priority_lines_from_flat
+from foresight_x.schemas import MemoryFactCategory, ProfileMemoryFact, UserProfile, rebuild_priority_lines_from_flat
 from foresight_x.structured_predict import structured_predict
 
 MAX_INGEST_CHARS = 80_000
+
+
+class PersonalizationMemoryFactDraft(BaseModel):
+    category: Literal["identity", "views", "behavior", "goals", "constraints", "other"] = Field(
+        default="other",
+        description="Bucket for one atomic fact from the excerpt.",
+    )
+    text: str = Field(
+        max_length=280,
+        description="One standalone proposition supported by the excerpt; do not merge unrelated statements.",
+    )
+    subject_ref: str = Field(default="user", description="Entity this row is about; default user.")
+    predicate: str = Field(
+        default="",
+        description="snake_case relation when possible (studies_at, friend_of, …); empty = legacy flat line.",
+    )
+    object_value: str = Field(default="", description="Object of the relation when predicate is set.")
+    evidence: str = Field(default="", max_length=280, description="Short quote from the excerpt supporting this row.")
+
+
+def _coerce_memory_category(raw: str) -> MemoryFactCategory:
+    m: dict[str, MemoryFactCategory] = {
+        "identity": MemoryFactCategory.IDENTITY,
+        "views": MemoryFactCategory.VIEWS,
+        "behavior": MemoryFactCategory.BEHAVIOR,
+        "goals": MemoryFactCategory.GOALS,
+        "constraints": MemoryFactCategory.CONSTRAINTS,
+        "other": MemoryFactCategory.OTHER,
+    }
+    return m.get(str(raw).strip().lower(), MemoryFactCategory.OTHER)
 
 
 class PersonalizationExtract(BaseModel):
@@ -48,16 +81,34 @@ class PersonalizationExtract(BaseModel):
         default="unknown",
         description="Only set if clearly supported; otherwise unknown.",
     )
+    memory_facts_add: list[PersonalizationMemoryFactDraft] = Field(
+        default_factory=list,
+        description=(
+            "0–24 atomic durable facts (category + text) grounded in the excerpt. "
+            "When the prior decomposition lists numbered claims, emit one memory_facts_add row per numbered line "
+            "that should be stored (same proposition; category may be refined). Never merge two numbered claims into one row."
+        ),
+    )
 
 
 INGEST_PROMPT = """You analyze a raw text export (email thread, chat log, or mixed). The user pasted it to improve
 how the app models their behavior—not for therapy or moral judgment.
+
+Prior pass: atomic factual claims already extracted from the SAME excerpt (one independent proposition per line; trust this for granularity):
+---
+{claims_block}
+---
 
 Rules:
 - Use ONLY what appears in the excerpt. Do not invent biographical facts or events.
 - Prefer concrete behavioral patterns over vague labels.
 - You may write output in English or Chinese to match the source text.
 - If the text is too short or uninformative, return mostly empty lists and a short honest about_me_append.
+- Populate memory_facts_add with one entry per durable fact: when the prior block lists numbered claims, align rows to those lines
+  (one memory_facts_add item per relevant numbered claim; do not fuse multiple lines). If the prior block is empty, still split any
+  explicit self-reported facts in the TEXT into separate memory_facts_add rows using the same one-proposition-per-row rule.
+- When possible, set subject_ref (usually "user"), predicate (snake_case), object_value, and evidence for typed storage; otherwise
+  use text-only legacy rows.
 
 TEXT (may be truncated):
 ---
@@ -122,7 +173,7 @@ def _merge_profiles(base: UserProfile, ext: PersonalizationExtract, *, stamp: st
 
     conf = min(1.0, float(base.confidence or 0.0) + 0.07)
 
-    return base.model_copy(
+    prof = base.model_copy(
         update={
             "recurring_themes": themes,
             "values": values,
@@ -135,6 +186,44 @@ def _merge_profiles(base: UserProfile, ext: PersonalizationExtract, *, stamp: st
             "last_updated": stamp,
         }
     )
+    recs: list[ProfileMemoryFact] = []
+    for d in ext.memory_facts_add:
+        cat = _coerce_memory_category(d.category)
+        subj = (d.subject_ref or "user").strip() or "user"
+        pred = (d.predicate or "").strip()
+        obj = (d.object_value or "").strip()
+        txt = (d.text or "").strip()
+        ev = (d.evidence or "").strip()
+        if pred and obj:
+            line = txt or render_triple_line(subj, pred, obj)
+            recs.append(
+                ProfileMemoryFact(
+                    id="",
+                    category=cat,
+                    text=line[:500],
+                    source="personalize",
+                    created_at="",
+                    subject_ref=subj,
+                    predicate=pred[:200],
+                    object_value=obj[:500],
+                    evidence=ev[:280],
+                )
+            )
+        elif txt:
+            recs.append(
+                ProfileMemoryFact(
+                    id="",
+                    category=cat,
+                    text=txt[:500],
+                    source="personalize",
+                    created_at="",
+                    subject_ref=subj,
+                    evidence=ev[:280],
+                )
+            )
+    if recs:
+        prof = append_profile_memory_records(prof, recs)
+    return prof
 
 
 def ingest_personalization_text(raw: str, *, settings: Settings | None = None) -> tuple[UserProfile, PersonalizationExtract, str]:
@@ -149,8 +238,16 @@ def ingest_personalization_text(raw: str, *, settings: Settings | None = None) -
     if not (s.openai_api_key or "").strip():
         raise RuntimeError("OPENAI_API_KEY is required for personalization ingest")
 
+    llm_claims = build_openai_llm(s, temperature=0.12)
+    claims = run_atomic_claims(text, llm_claims, max_claims=24)
+    claims_block = (
+        "\n".join(f"{i + 1}. {c}" for i, c in enumerate(claims))
+        if claims
+        else "(empty — derive memory_facts_add from TEXT using one proposition per memory row.)"
+    )
+
     llm = build_openai_llm(s, temperature=0.35)
-    prompt = INGEST_PROMPT.format(text=text)
+    prompt = INGEST_PROMPT.format(text=text, claims_block=claims_block)
     ext = structured_predict(llm, PersonalizationExtract, prompt)
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -181,6 +278,7 @@ def ingest_personalization_text(raw: str, *, settings: Settings | None = None) -
             "priorities": merged.priorities,
             "priority_lines": merged.priority_lines,
             "constraints": merged.constraints,
+            "memory_facts": merged.memory_facts,
             "n_decisions_summarized": n_sum,
         }
     )
@@ -200,6 +298,10 @@ def preview_extract_summary(ext: PersonalizationExtract) -> list[str]:
             lines.append(f"Inferred: {t.strip()}")
     if ext.about_me_append.strip():
         lines.append(f"About (model view): {ext.about_me_append.strip()[:280]}{'…' if len(ext.about_me_append.strip()) > 280 else ''}")
+    for f in ext.memory_facts_add[:6]:
+        t = (f.text or "").strip()
+        if t:
+            lines.append(f"Fact [{f.category}]: {t[:200]}{'…' if len(t) > 200 else ''}")
     if not lines:
         lines.append("No strong new signals — profile updated lightly.")
     return lines[:12]

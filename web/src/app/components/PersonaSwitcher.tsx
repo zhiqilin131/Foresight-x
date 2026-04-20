@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { apiUrl } from '../../utils/apiOrigin';
+import { apiFetchErrorMessage, apiUrl } from '../../utils/apiOrigin';
 
 type PersonaItem = {
   user_id: string;
@@ -76,7 +76,7 @@ export function PersonaSwitcher({ compact: _compact = false }: { compact?: boole
       setItems(Array.isArray(data.users) ? data.users : []);
       setCurrent(String(data.current_user_id ?? ''));
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to load personas');
+      setErr(apiFetchErrorMessage(e));
     }
   }, []);
 
@@ -155,7 +155,7 @@ export function PersonaSwitcher({ compact: _compact = false }: { compact?: boole
       // Force clean state reload so all pages refresh profile/memory scoped data.
       window.location.reload();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Switch failed');
+      setErr(apiFetchErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -178,7 +178,7 @@ export function PersonaSwitcher({ compact: _compact = false }: { compact?: boole
       await load();
       setMsg(`Created ${uid}`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Create failed');
+      setErr(apiFetchErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -196,7 +196,7 @@ export function PersonaSwitcher({ compact: _compact = false }: { compact?: boole
       await load();
       setMsg(`Deleted ${current}`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Delete failed');
+      setErr(apiFetchErrorMessage(e));
     } finally {
       setBusy(false);
     }

@@ -8,10 +8,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from foresight_x.config import Settings, load_settings
+from foresight_x.extraction.atomic_claims import run_atomic_claims
 from foresight_x.orchestration.llm_factory import build_openai_llm
-from foresight_x.profile.merge import append_memory_facts
+from foresight_x.profile.memory_structured import active_memory_facts, format_stored_fact_bullet, render_triple_line
+from foresight_x.profile.merge import append_profile_memory_records
 from foresight_x.profile.store import load_user_profile, save_user_profile
-from foresight_x.schemas import MemoryFactCategory
+from foresight_x.schemas import MemoryFactCategory, ProfileMemoryFact
 from foresight_x.shadow.decision_context import build_shadow_decision_context_block
 from foresight_x.shadow.store import ShadowSelfState, load_shadow_self, merge_observation, save_shadow_self
 from foresight_x.structured_predict import structured_predict
@@ -22,11 +24,31 @@ class ShadowMemoryFactDraft(BaseModel):
         description="Bucket for the fact.",
     )
     text: str = Field(
-        max_length=220,
+        max_length=280,
         description=(
-            "ONE concrete fact the user stated or clearly implied THIS turn — names, affiliations, numbers, "
-            "preferences. Not a therapist paraphrase (forbidden: 'navigating', 'exploring themes', 'significant shift')."
+            "ONE concrete fact (human-readable line). If subject_ref/predicate/object_value are set, "
+            "text can mirror the triple in natural language."
         ),
+    )
+    subject_ref: str = Field(
+        default="user",
+        description="Entity this is about; default 'user' for first-person statements.",
+    )
+    predicate: str = Field(
+        default="",
+        description=(
+            "snake_case relation (e.g. studies_at, friend_of, prefers, dating). Use open vocabulary; "
+            "empty means legacy flat fact (category+text only)."
+        ),
+    )
+    object_value: str = Field(
+        default="",
+        description="Object of the relation (school name, person, preference target). Empty if legacy flat.",
+    )
+    evidence: str = Field(
+        default="",
+        max_length=220,
+        description="Short verbatim quote from the user's latest message supporting this fact (may be empty).",
     )
 
 
@@ -48,7 +70,7 @@ class ShadowChatTurn(BaseModel):
     memory_facts: list[ShadowMemoryFactDraft] = Field(
         default_factory=list,
         description=(
-            "0–5 concrete memory facts to store (category + short text). "
+            "0–12 concrete memory facts to store (category + short text), one distinct proposition per item. "
             "Examples: identity — 'Currently identifies as Republican'; views — 'Supports tighter immigration policy'. "
             "Skip if nothing new and concrete; never store vague rewrites of their message."
         ),
@@ -96,91 +118,10 @@ def _format_profile_block(prof: Any) -> str:
     return "\n".join(bits) if bits else "(none yet.)"
 
 
-def _heuristic_memory_facts_from_user_text(text: str) -> list[tuple[MemoryFactCategory, str]]:
-    """Fallback extraction for obvious preference/identity statements when model omits memory_facts."""
-    s = (text or "").strip()
-    if not s:
-        return []
-    out: list[tuple[MemoryFactCategory, str]] = []
-    seen: set[tuple[MemoryFactCategory, str]] = set()
-
-    # Example: "I like LeBron over Kobe" / "I prefer tea over coffee"
-    for m in re.finditer(
-        r"\b(?:i\s+(?:like|prefer))\s+([^.,;\n]{1,80}?)\s+over\s+([^.,;\n]{1,80})(?=$|[.?!,;\n])",
-        s,
-        flags=re.IGNORECASE,
-    ):
-        left = " ".join(m.group(1).split()).strip(" '\"")
-        right = " ".join(m.group(2).split()).strip(" '\"")
-        if not left or not right:
-            continue
-        fact = f"Prefers {left} over {right}"
-        key = (MemoryFactCategory.VIEWS, fact.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append((MemoryFactCategory.VIEWS, fact))
-
-    # Example: "I like to journal at night" / "I enjoy running"
-    for m in re.finditer(
-        r"\b(?:i\s+(?:like|love|enjoy)\s+to)\s+([^.,;\n]{2,120})(?=$|[.?!,;\n])",
-        s,
-        flags=re.IGNORECASE,
-    ):
-        action = " ".join(m.group(1).split()).strip(" '\"")
-        if not action:
-            continue
-        fact = f"Behavior preference: likes to {action}"
-        key = (MemoryFactCategory.BEHAVIOR, fact.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append((MemoryFactCategory.BEHAVIOR, fact))
-
-    for m in re.finditer(
-        r"\b(?:i\s+(?:enjoy|like|love))\s+([^.,;\n]{2,120})(?=$|[.?!,;\n])",
-        s,
-        flags=re.IGNORECASE,
-    ):
-        phrase = " ".join(m.group(1).split()).strip(" '\"")
-        if not phrase:
-            continue
-        # Skip "prefer X over Y" path and "like to ..." already captured.
-        low = phrase.lower()
-        if " over " in low or low.startswith("to "):
-            continue
-        fact = f"Behavior preference: enjoys {phrase}"
-        key = (MemoryFactCategory.BEHAVIOR, fact.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append((MemoryFactCategory.BEHAVIOR, fact))
-
-    # Example: "I am a junior at CMU" / "I'm a first-year PhD student at MIT"
-    for m in re.finditer(
-        r"\b(?:i\s+am|i'm)\s+([^.,;\n]{3,100})(?=$|[.?!,;\n])",
-        s,
-        flags=re.IGNORECASE,
-    ):
-        phrase = " ".join(m.group(1).split()).strip(" '\"")
-        if not phrase:
-            continue
-        # Avoid capturing tiny filler fragments.
-        if phrase.lower() in {"okay", "fine", "good", "not sure"}:
-            continue
-        if "junior" in phrase.lower() or "senior" in phrase.lower() or "freshman" in phrase.lower() or "student" in phrase.lower():
-            fact = f"Identity: {phrase}"
-            cat = MemoryFactCategory.IDENTITY
-        else:
-            fact = f"Identity: {phrase}"
-            cat = MemoryFactCategory.OTHER
-        key = (cat, fact.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append((cat, fact))
-
-    return out[:5]
+def _format_atomic_claims_block(claims: list[str]) -> str:
+    if not claims:
+        return "(none — use only the user's latest message as the factual source for new memory_facts.)"
+    return "\n".join(f"{i + 1}. {c}" for i, c in enumerate(claims))
 
 
 def _extract_preference_pairs_from_memory(memory_fact_texts: list[str]) -> list[tuple[str, str, str]]:
@@ -253,10 +194,17 @@ FAITHFUL LANGUAGE (strict):
   then add nuance if needed. Do NOT hedge into neutrality when memory is explicit.
 - Short paragraphs. No numbered homework or life plans. No picking their decision for them.
 
+ATOMIC CLAIMS (machine decomposition of the user's LATEST message only; language-agnostic, one proposition per line):
+{atomic_claims_block}
+
 MEMORY FACTS (structured output):
-- In `memory_facts`, return 0–5 items ONLY when the user gave NEW concrete information worth storing for later decisions
-  (party, job, constraint, stated goal, recurring behavior they named).
-- Each `text` must be a standalone fact an analyst could use (include proper nouns when they used them).
+- When the atomic-claims list is non-empty, emit one `memory_facts` item per claim that is NEW relative to structured memory
+  on file and worth persisting (identity, views, behavior, goals, constraints). Do not merge two claims into one row.
+- For each item, set `subject_ref` (usually "user"), `predicate` (snake_case, e.g. studies_at, works_at, friend_of, prefers),
+  and `object_value` (the school, person, or literal). These fields power typed storage and time-aware updates; leave them
+  empty only if you cannot name a relation (then `text` alone is used as a legacy flat fact).
+- `text` must remain a clear one-line fact; `evidence` should quote a few words from the user's message when possible.
+- When the atomic-claims list is empty, fall back to 0–12 items only if the latest message still states NEW concrete facts.
 - FORBIDDEN in memory_facts.text: meta-summaries with no content ("significant shift in identity") — either write the
   actual fact ("Now identifies as Republican") or omit.
 
@@ -301,10 +249,9 @@ def run_shadow_turn(
     transcript = _format_transcript(messages)
 
     prof = load_user_profile(settings=s)
-    if prof.memory_facts:
-        memory_block = "\n".join(
-            f"- [{x.category.value}] {x.text}" for x in prof.memory_facts[-32:]
-        )
+    mem_active = active_memory_facts(list(prof.memory_facts))
+    if mem_active:
+        memory_block = "\n".join(format_stored_fact_bullet(x) for x in mem_active[-32:])
     else:
         memory_block = "(none yet.)"
     profile_block = _format_profile_block(prof)
@@ -316,12 +263,17 @@ def run_shadow_turn(
         last_user_message=last_user_text,
     )
 
+    llm_claims = build_openai_llm(s, temperature=0.12)
+    atomic_claims = run_atomic_claims(last_user_text, llm_claims, max_claims=12)
+    atomic_claims_block = _format_atomic_claims_block(atomic_claims)
+
     prompt = SHADOW_INSTRUCTIONS.format(
         memory_block=memory_block,
         profile_block=profile_block,
         decision_context_block=decision_context_block,
         shadow_block=shadow_block,
         transcript=transcript,
+        atomic_claims_block=atomic_claims_block,
     )
     turn = structured_predict(llm, ShadowChatTurn, prompt)
 
@@ -329,35 +281,57 @@ def run_shadow_turn(
     flag = bool(turn.suggest_decision_navigation)
     memory_used: list[str] = []
 
-    items: list[tuple[MemoryFactCategory, str]] = []
+    records: list[ProfileMemoryFact] = []
     for d in turn.memory_facts:
+        cat = _coerce_category(d.category)
+        subj = (d.subject_ref or "user").strip() or "user"
+        pred = (d.predicate or "").strip()[:200]
+        obj = (d.object_value or "").strip()[:500]
         txt = (d.text or "").strip()
-        if not txt:
-            continue
-        if len(txt) > 220:
-            txt = txt[:217] + "…"
-        items.append((_coerce_category(d.category), txt))
-    items.extend(_heuristic_memory_facts_from_user_text(last_user_text))
-    if items:
-        dedup: list[tuple[MemoryFactCategory, str]] = []
-        seen_local: set[tuple[MemoryFactCategory, str]] = set()
-        for cat, txt in items:
-            key = (cat, txt.strip().lower())
-            if not txt.strip() or key in seen_local:
+        if not pred or not obj:
+            if not txt:
                 continue
-            seen_local.add(key)
-            dedup.append((cat, txt.strip()))
-        items = dedup
+            if len(txt) > 280:
+                txt = txt[:277] + "…"
+            records.append(
+                ProfileMemoryFact(
+                    id="",
+                    category=cat,
+                    text=txt[:500],
+                    source="shadow",
+                    created_at="",
+                    subject_ref=subj,
+                    evidence=(d.evidence or "").strip()[:220],
+                )
+            )
+            continue
+        if len(txt) > 280:
+            txt = txt[:277] + "…"
+        if not txt:
+            txt = render_triple_line(subj, pred, obj)[:500]
+        records.append(
+            ProfileMemoryFact(
+                id="",
+                category=cat,
+                text=txt[:500],
+                source="shadow",
+                created_at="",
+                subject_ref=subj,
+                predicate=pred,
+                object_value=obj,
+                evidence=(d.evidence or "").strip()[:220],
+            )
+        )
 
     recorded: list[str] | None = None
-    if items:
-        combined = " · ".join(f"{c.value}: {t}" for c, t in items)
+    if records:
+        combined = " · ".join(r.text for r in records)
         state = merge_observation(state, combined)
         save_shadow_self(state, settings=s)
 
-        prof = append_memory_facts(prof, items, source="shadow")
+        prof = append_profile_memory_records(prof, records)
         save_user_profile(prof, settings=s)
-        recorded = [t for _, t in items]
+        recorded = [r.text for r in records]
     else:
         state = state.model_copy(update={"turn_count": state.turn_count + 1})
         save_shadow_self(state, settings=s)
@@ -365,7 +339,7 @@ def run_shadow_turn(
     reply, used = _ground_reply_with_memory_preferences(
         reply,
         user_text=last_user_text,
-        memory_fact_texts=[x.text for x in prof.memory_facts],
+        memory_fact_texts=[x.text for x in prof.memory_facts if x.status == "active"],
     )
     if used:
         memory_used.extend(used)

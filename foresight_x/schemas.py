@@ -39,19 +39,50 @@ class MemoryFactCategory(str, Enum):
 
 MemoryFactSource = Literal["shadow", "personalize", "clarification", "user", "import", "legacy"]
 
+MemoryFactStatus = Literal["active", "deprecated"]
+
 
 class ProfileMemoryFact(BaseModel):
-    """Structured memory used by Shadow + decision prompts; user can delete rows in Profile."""
+    """Structured memory: legacy flat ``text`` and/or typed triple + time/version semantics."""
 
     id: str = Field(default="", description="UUID; assigned on load if missing.")
     category: MemoryFactCategory = MemoryFactCategory.OTHER
-    text: str = Field(min_length=1, description="Concrete fact, e.g. party affiliation or a named preference.")
+    text: str = Field(min_length=1, description="Human-readable line for UI and prompts (always set).")
     source: MemoryFactSource = "shadow"
     created_at: str = Field(default="", description="ISO-8601 UTC when known.")
+    # Typed layer (optional; empty predicate => legacy category+text only)
+    subject_ref: str = Field(
+        default="user",
+        description="Entity the fact is about; default 'user' for first-person memories.",
+    )
+    predicate: str = Field(
+        default="",
+        description="snake_case relation label, e.g. studies_at, friend_of, prefers.",
+    )
+    object_value: str = Field(
+        default="",
+        description="Object of the relation (entity label or literal).",
+    )
+    qualifiers: dict[str, Any] = Field(default_factory=dict, description="Optional key-value qualifiers.")
+    valid_from: str = Field(default="", description="ISO-8601 UTC start of validity; empty = unknown.")
+    valid_to: str = Field(default="", description="ISO-8601 UTC end of validity; empty = still valid if active.")
+    status: MemoryFactStatus = "active"
+    replaced_by_id: str = Field(default="", description="Newer fact that supersedes this row when deprecated.")
+    supersedes_id: str = Field(default="", description="Prior fact this one replaces.")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    evidence: str = Field(
+        default="",
+        description="Verbatim or near-verbatim snippet from the user for audit.",
+    )
 
     @field_validator("text", mode="before")
     @classmethod
     def _strip_fact_text(cls, v: Any) -> str:
+        return str(v or "").strip()
+
+    @field_validator("subject_ref", "predicate", "object_value", "evidence", mode="before")
+    @classmethod
+    def _strip_optional_strings(cls, v: Any) -> str:
         return str(v or "").strip()
 
 

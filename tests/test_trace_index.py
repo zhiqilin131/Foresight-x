@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -83,3 +84,36 @@ def test_list_and_delete_trace_and_outcome(iso: Settings) -> None:
     assert not (iso.traces_dir / "tid-1.json").exists()
     assert not (iso.outcomes_dir / "tid-1.json").exists()
     assert list_traces(settings=iso) == []
+
+
+def test_legacy_trace_without_user_hidden_for_named_persona(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unscoped traces are listed only for demo_user; named personas need active_user_id on the trace."""
+    monkeypatch.setenv("FORESIGHT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("FORESIGHT_USER_ID", "bella")
+    s = Settings()
+    traces_dir = tmp_path / "traces"
+    traces_dir.mkdir(parents=True)
+    legacy = {
+        "decision_id": "legacy-unscoped",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "user_state": {
+            "raw_input": "Kevin Amber question",
+            "goals": ["g"],
+            "time_pressure": "low",
+            "stress_level": 3,
+            "workload": 4,
+            "current_behavior": "x",
+            "decision_type": "personal",
+            "reversibility": "partial",
+        },
+    }
+    traces_dir.joinpath("legacy-unscoped.json").write_text(json.dumps(legacy), encoding="utf-8")
+    assert list_traces(settings=s) == []
+
+    monkeypatch.setenv("FORESIGHT_USER_ID", "demo_user")
+    s2 = Settings()
+    rows = list_traces(settings=s2)
+    assert len(rows) == 1
+    assert rows[0].decision_id == "legacy-unscoped"

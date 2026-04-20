@@ -392,7 +392,10 @@ def run_decision_alias(body: RunRequest) -> RunResponse:
 @app.get("/api/profile")
 def get_profile() -> dict:
     settings = _settings_for_active_user()
-    return load_user_profile(settings).model_dump(mode="json")
+    p = load_user_profile(settings).model_dump(mode="json")
+    mfs = p.get("memory_facts") or []
+    p["memory_facts"] = [x for x in mfs if (x or {}).get("status", "active") != "deprecated"]
+    return p
 
 
 @app.put("/api/profile")

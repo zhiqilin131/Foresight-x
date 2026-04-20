@@ -27,6 +27,11 @@ type MemoryFactRow = {
   text: string;
   source?: string;
   created_at?: string;
+  subject_ref?: string;
+  predicate?: string;
+  object_value?: string;
+  evidence?: string;
+  status?: string;
 };
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -258,7 +263,19 @@ export default function ProfilePage() {
                     <ul className="space-y-2">
                       {rows.map((f) => (
                         <li key={f.id || f.text} className="flex items-start justify-between gap-2">
-                          <span className="min-w-0 leading-snug">{f.text}</span>
+                          <span className="min-w-0 leading-snug">
+                            {f.text}
+                            {f.predicate && f.object_value ? (
+                              <span className="block text-[10px] text-gray-500 mt-0.5 font-mono leading-tight">
+                                {(f.subject_ref || 'user').trim()} · {f.predicate} · {f.object_value}
+                              </span>
+                            ) : null}
+                            {f.evidence ? (
+                              <span className="block text-[10px] text-violet-700/90 mt-0.5 italic">
+                                Evidence: {f.evidence}
+                              </span>
+                            ) : null}
+                          </span>
                           <button
                             type="button"
                             disabled={deletingId === f.id}

@@ -90,18 +90,29 @@ def _chosen_option_label(trace: DecisionTrace) -> str:
 
 
 def _list_outcome_ids_recency(settings: Settings) -> list[str]:
+    """Newest outcome files first, **only** for decisions whose trace is visible to the current user.
+
+    Global outcome scans would leak other personas' decision_ids into RRF; :func:`~foresight_x.harness.trace_index.list_traces`
+    already enforces ``active_user_id`` (see trace JSON). We intersect with that set.
+    """
+    allowed = {t.decision_id for t in list_traces(settings=settings)}
+    if not allowed:
+        return []
     root = settings.outcomes_dir
     if not root.is_dir():
         return []
     rows: list[tuple[str, str]] = []
     for path in root.glob("*.json"):
+        stem = path.stem
+        if stem not in allowed:
+            continue
         try:
             o = DecisionOutcome.model_validate_json(path.read_text(encoding="utf-8"))
-            rows.append((o.timestamp, path.stem))
+            rows.append((o.timestamp, stem))
         except (OSError, ValueError):
             continue
     rows.sort(key=lambda x: x[0], reverse=True)
-    return [stem for _, stem in rows]
+    return [s for _, s in rows]
 
 
 def _format_decision_fact(

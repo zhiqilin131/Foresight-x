@@ -1,6 +1,11 @@
 """Tests for personalization merge (no LLM)."""
 
-from foresight_x.personalization.ingest import PersonalizationExtract, _merge_profiles, preview_extract_summary
+from foresight_x.personalization.ingest import (
+    PersonalizationExtract,
+    PersonalizationMemoryFactDraft,
+    _merge_profiles,
+    preview_extract_summary,
+)
 from foresight_x.schemas import UserProfile
 
 
@@ -29,6 +34,24 @@ def test_merge_profiles_dedupes_and_appends_about() -> None:
     assert "Personalization import" in out.about_me
     assert out.risk_posture == "moderate"
     assert out.confidence > 0.2
+
+
+def test_merge_profiles_appends_memory_facts() -> None:
+    base = UserProfile(user_id="u1", memory_facts=[])
+    ext = PersonalizationExtract(
+        memory_facts_add=[
+            PersonalizationMemoryFactDraft(category="identity", text="Goes by Bella"),
+            PersonalizationMemoryFactDraft(category="identity", text="Age 20"),
+            PersonalizationMemoryFactDraft(category="constraints", text="Studies at CMU"),
+        ],
+    )
+    out = _merge_profiles(base, ext, stamp="2026-04-20T12:00:00Z")
+    assert len(out.memory_facts) == 3
+    texts = {f.text for f in out.memory_facts}
+    assert "Goes by Bella" in texts
+    assert "Age 20" in texts
+    assert "Studies at CMU" in texts
+    assert all(f.source == "personalize" for f in out.memory_facts)
 
 
 def test_preview_extract_summary_nonempty() -> None:
